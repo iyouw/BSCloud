@@ -26,16 +26,15 @@ namespace BSCloud.Controllers
         using(var srcFile = src.OpenReadStream())
         using(var targetFile = target.OpenReadStream())
         {
-          var (destFile, rootDir) = await _service.DiffAsync(srcFile, targetFile, Path.GetFileNameWithoutExtension(src.FileName));
-          dir = rootDir;
-          return File(destFile,"application/octet-stream","diff.zip");
+          var diff = await _service.DiffAsync(srcFile, targetFile, Path.GetFileNameWithoutExtension(src.FileName));
+          dir = Path.GetDirectoryName(diff);
+          return File(new FileStream(diff,FileMode.Open),"application/octet-stream",Path.GetFileName(diff));
         }
       }
       finally
       {
-        Directory.Delete(dir, true);
+        // Directory.Delete(dir, true);
       }
-      
     }
 
     [HttpPost]
@@ -44,10 +43,8 @@ namespace BSCloud.Controllers
       using(var srcFile = src.OpenReadStream())
       using(var targetFile = target.OpenReadStream())
       {
-        using(var destFile = await _service.PatchAsync(srcFile, targetFile, Path.GetFileNameWithoutExtension(src.FileName)))
-        {
-          return File(srcFile,"application/octet-stream","patch.zip");
-        }
+        var patch = await _service.PatchAsync(srcFile, targetFile, Path.GetFileNameWithoutExtension(src.FileName));
+        return File(new FileStream(patch, FileMode.Open),"application/octet-stream",Path.GetFileName(patch));
       }
     }
   }

@@ -10,80 +10,112 @@ namespace BSCloud.Services
 {
   public class BSService : IBSService
   {
-    public async Task<(Stream,string)> DiffAsync(Stream src, Stream target, string srcDirName, string filter="js")
+    public async Task<string> DiffAsync(Stream src, Stream target, string srcDirName, string filter="js")
     {
-      var rootDir = CreateTempDir(srcDirName);
+      var (rootDir, srcDir, diffDir) = CreateTempDir(srcDirName,"src","diff");
+      var zip = new FastZip();
+      zip.ExtractZip(src, srcDir, FastZip.Overwrite.Always, null, "", "", false, true);
+
       var oldData = new byte[target.Length];
       await target.ReadAsync(oldData, 0, oldData.Length);
-      var tasks = TraversalZipStream(src, async zipEntry =>
+
+      var tasks = ProcessDirEntries(srcDir, async (entry, isDir) =>
       {
-        if(zipEntry.IsDirectory)
+        var rel = Path.GetRelativePath(srcDir, entry);
+        var entryPath = Path.Combine(diffDir, rel);
+        if(isDir)
         {
-          Directory.CreateDirectory(Path.Combine(rootDir, zipEntry.Name));
-        }
-        if(zipEntry.IsFile && zipEntry.Name.EndsWith(filter))
+          Directory.CreateDirectory(entryPath);
+        } 
+        else if(entryPath.EndsWith(filter))
         {
-          using(var fs = File.Create(Path.Combine(rootDir, zipEntry.Name)))
+          using(var fs = File.Create(entryPath))
           {
-            BSAlgorithm.Diff(oldData, await Task.FromResult(new byte[2]), fs);
+            BSAlgorithm.Diff(oldData, await File.ReadAllBytesAsync(entry), fs);
           }
         }
       });
 
-      var ms = new MemoryStream();
-      var zip = new FastZip();
-      zip.CreateZip(ms, rootDir, true, "", "", true);
-      ms.Position = 0;
-      return (ms, rootDir);
+      await Task.WhenAll(tasks);
+
+      var zipFile = Path.Combine(rootDir,"diff.zip");
+      zip.CreateZip(File.Create(zipFile), diffDir, true, "", "", false);
+      
+      return zipFile;
     }
 
-    public async Task<Stream> PatchAsync(Stream src, Stream target, string srcDirName, string filter = "js")
+    public async Task<string> PatchAsync(Stream src, Stream target, string srcDirName, string filter = "js")
     {
+      var (rootDir, srcDir, patchDir) = CreateTempDir(srcDirName,"src","patch");
       var temp = Path.Combine(Directory.GetCurrentDirectory(), "Temp");
 
-      var rootDir = Path.Combine(temp, $"{srcDirName}_patch");
-      if(Directory.Exists(rootDir))
-      {
-        Directory.Delete(rootDir,true);
-      }
-      Directory.CreateDirectory(rootDir);
-
       var zip = new FastZip();
-      zip.ExtractZip(src, rootDir, FastZip.Overwrite.Always, null, "", "", false, false);
+      zip.ExtractZip(src, srcDir, FastZip.Overwrite.Always, null, "", "", false, true);
 
-      var patchDir = Path.Combine(rootDir,"patch");
-      Directory.CreateDirectory(patchDir);
-
-      var srcDir = Path.Combine(rootDir, srcDirName);
-
-      await TraversalDir(srcDir, patchDir, (entry, patchEntry)=>
+      var tasks = ProcessDirEntries(srcDir,  (entry, isDir) =>
       {
-        if(entry.EndsWith(filter))
+        var rel = Path.GetRelativePath(srcDir, entry);
+        var entryPath = Path.Combine(patchDir, rel);
+        if(isDir)
         {
-          using(var fs = File.Create(patchEntry))
+          Directory.CreateDirectory(entryPath);
+        } 
+        else if(entryPath.EndsWith(filter))
+        {
+          using(var fs = File.Create(entryPath))
           {
             BSAlgorithm.Patch(target, () => new FileStream(entry, FileMode.Open, FileAccess.Read, FileShare.Read), fs);
           }
         }
+
+        return Task.FromResult(0);
       });
-      var ms = new MemoryStream();
 
-      zip.CreateZip(ms, rootDir, true, "", "", true);
+      await Task.WhenAll(tasks);
 
-      ms.Position = 0;
-      return ms;
+      var zipFile = Path.Combine(rootDir,"patch.zip");
+      zip.CreateZip(File.Create(zipFile), patchDir, true, "", "", false);
+
+      return zipFile;
     }
     
 
-    private string CreateTempDir(string name)
+    private (string,string,string) CreateTempDir(string dir, string src, string dest)
     {
-      var path = Path.Combine(Directory.GetCurrentDirectory(), "Temp", name);
-      if(Directory.Exists(path))
+      var root = Path.Combine(Directory.GetCurrentDirectory(), "Temp", dir);
+      if(Directory.Exists(root))
       {
-        Directory.Delete(path, true);
+        Directory.Delete(root, true);
       }
-      Directory.CreateDirectory(path);
-      return path;
+      Directory.CreateDirectory(root);
+      var srcDir = Path.Combine(root, src);
+      Directory.CreateDirectory(srcDir);
+      var destDir = Path.Combine(root, dest);
+      Directory.CreateDirectory(destDir);
+      return (root, srcDir, destDir);
+    }
+
+    private IEnumerable<Task> ProcessDirEntries(string dir, Func<string,bool, Task> processEntry)
+    {
+      foreach (var (entry, isDir) in TraversalDir(dir))
+      {
+        yield return processEntry(entry, isDir);        
+      }
+    }
+
+    private IEnumerable<(string, bool)> TraversalDir(string dir)
+    {
+      var entries = new List<(string, bool)>();
+      foreach (var entry in Directory.EnumerateFileSystemEntries(dir))
+      {
+        var isDir = IsDirectory(entry);
+        entries.Add((entry, isDir));
+        if(isDir)
+        {
+          entries.AddRange(TraversalDir(entry));
+        }
+      }
+      return entries;
     }
 
     private IEnumerable<Task> TraversalZipStream(Stream zipStream, Func<ZipEntry, Task> ProccessZip)
