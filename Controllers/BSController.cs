@@ -3,6 +3,8 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Http;
 using BSCloud.Services;
+using BSCloud.Results;
+
 
 namespace BSCloud.Controllers
 {
@@ -18,33 +20,28 @@ namespace BSCloud.Controllers
     }
 
     [HttpPost]
-    public async Task<FileStreamResult> Diff(IFormFile src, IFormFile target)
+    public async Task<FileStreamResult> Diff(IFormFile zipFile, string baseFileName="weex.js", string filter="*.js", string patchInfo = "patch_info.txt")
     {
-      var dir = string.Empty;
-      try
+      using(var zip = zipFile.OpenReadStream())
       {
-        using(var srcFile = src.OpenReadStream())
-        using(var targetFile = target.OpenReadStream())
+        var diff = await _service.DiffAsync(zip, Path.GetFileNameWithoutExtension(zipFile.FileName),baseFileName, filter, patchInfo);
+        return new DeleteFileStreamResult(System.IO.File.OpenRead(diff),"application/octet-stream")
         {
-          var diff = await _service.DiffAsync(srcFile, targetFile, Path.GetFileNameWithoutExtension(src.FileName));
-          dir = Path.GetDirectoryName(diff);
-          return File(new FileStream(diff,FileMode.Open),"application/octet-stream",Path.GetFileName(diff));
-        }
-      }
-      finally
-      {
-        // Directory.Delete(dir, true);
+          FileDownloadName = Path.GetFileName(diff)
+        };
       }
     }
 
     [HttpPost]
-    public async Task<FileStreamResult> Patch(IFormFile src, IFormFile target)
+    public async Task<FileStreamResult> Patch(IFormFile zipFile, string baseFileName="weex.js", string filter="*.js")
     {
-      using(var srcFile = src.OpenReadStream())
-      using(var targetFile = target.OpenReadStream())
+      using(var zip = zipFile.OpenReadStream())
       {
-        var patch = await _service.PatchAsync(srcFile, targetFile, Path.GetFileNameWithoutExtension(src.FileName));
-        return File(new FileStream(patch, FileMode.Open),"application/octet-stream",Path.GetFileName(patch));
+        var patch = await _service.PatchAsync(zip, Path.GetFileNameWithoutExtension(zipFile.FileName),baseFileName, filter);
+        return new DeleteFileStreamResult(System.IO.File.OpenRead(patch), "application/octet-stream")
+        {
+          FileDownloadName = Path.GetFileName(patch)
+        };
       }
     }
   }

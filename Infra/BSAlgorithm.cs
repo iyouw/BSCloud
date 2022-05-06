@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using ICSharpCode.SharpZipLib.BZip2;
 
-namespace BSCloud
+namespace BSCloud.Infra
 {
 	/*
 	The original bsdiff.c source code (http://www.daemonology.net/bsdiff/) is

@@ -5,8 +5,8 @@ namespace BSCloud.Services
 {
   public interface IBSService
   {
-    Task<string> DiffAsync(Stream src, Stream target, string srcDirName, string filter = "js");
+    Task<string> DiffAsync(Stream zipFile, string zipFileName, string baseFileName = "weex.js",  string filter = "js", string patchInfo = "patch_info.txt");
 
-    Task<string> PatchAsync(Stream src, Stream target, string srcDirName, string filter = "js");
+    Task<string> PatchAsync(Stream zipFile, string zipFileName, string baseFileName = "weex.js", string filter = "js");
   }
 }
