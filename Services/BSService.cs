@@ -19,26 +19,16 @@ namespace BSCloud.Services
     }
     public async Task<string> DiffAsync(Stream zip, string zipFileName, string baseFileName="weex.js", string filter="js", string patchInfo = "patch_info.txt")
     {
-      var uz = Stopwatch.StartNew();
       var dirPath = ZipHelper.UnZip(zip);
-      uz.Stop();
-      _logger.LogInformation($"unzip ellapsed: {uz.ElapsedMilliseconds}ms");
 
       var d = Stopwatch.StartNew();
       var patches = await DiffCoreAsync(dirPath, baseFileName, filter);
       d.Stop();
       _logger.LogInformation($"diff ellapsed: {d.ElapsedMilliseconds}ms");
 
-      var p = Stopwatch.StartNew();
       await WritePatches(patches, dirPath, patchInfo);
-      p.Stop();
-      _logger.LogInformation($"write patches ellapsed: {p.ElapsedMilliseconds}ms");
 
-      var z = Stopwatch.StartNew();
-      var res = ZipHelper.Zip(dirPath, zipFileName);
-      z.Stop();
-      _logger.LogInformation($"zip ellapsed: {z.ElapsedMilliseconds}ms");
-      return res;
+      return ZipHelper.Zip(dirPath, zipFileName);
     }
 
     private async Task<IList<string>> DiffCoreAsync(string dirPath,string baseFileName, string filter)
@@ -63,7 +53,7 @@ namespace BSCloud.Services
           {
             lock(this)
             {
-              res.Add(Path.Combine(dirPath, file.FullName));
+              res.Add(Path.GetRelativePath(dirPath, file.FullName));
             }
             diffFile.Replace(file.FullName, null);
           }
