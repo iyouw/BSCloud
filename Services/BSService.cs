@@ -41,8 +41,8 @@ namespace BSCloud.Services
         if(file.Name != baseFileName)
         {
           var newData = await File.ReadAllBytesAsync(file.FullName);
-          var diffFile = new FileInfo($"{file.FullName}.diff");
-          using(var fs = diffFile.Create())
+          var diffFile = new FileInfo(Path.GetTempFileName());
+          using(var fs = diffFile.OpenWrite())
           {
             var da = Stopwatch.StartNew();
             BSAlgorithm.Diff(baseData, newData, fs);
