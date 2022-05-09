@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
@@ -11,84 +10,93 @@ namespace BSCloud.Services
 {
   public class BSService : IBSService
   {
-    private readonly ILogger<BSService> _logger;
-
-    public BSService(ILogger<BSService> logger)
-    {
-      _logger = logger;      
-    }
     public async Task<string> DiffAsync(Stream zip, string zipFileName, string baseFileName="weex.js", string filter="js", string patchInfo = "patch_info.txt")
     {
-      var dirPath = ZipHelper.UnZip(zip);
+      var dirPath = await ZipHelper.UnZipAsync(zip);
 
-      var d = Stopwatch.StartNew();
       var patches = await DiffCoreAsync(dirPath, baseFileName, filter);
-      d.Stop();
-      _logger.LogInformation($"diff ellapsed: {d.ElapsedMilliseconds}ms");
 
-      await WritePatches(patches, dirPath, patchInfo);
+      await WritePatcheAsync(patches.Where(x=>!string.IsNullOrEmpty(x)), dirPath, patchInfo);
 
-      return ZipHelper.Zip(dirPath, zipFileName);
+      return await ZipHelper.ZipAsync(dirPath, zipFileName);
     }
 
-    private async Task<IList<string>> DiffCoreAsync(string dirPath,string baseFileName, string filter)
+    private async Task<string[]> DiffCoreAsync(string dirPath,string baseFileName, string filter)
     {
-      var res = new List<string>();
       var baseData = await File.ReadAllBytesAsync(Path.Combine(dirPath, baseFileName));
       var dirInfo = new DirectoryInfo(dirPath);
-      var tasks = dirInfo.EnumerateFiles(filter, SearchOption.AllDirectories).Select(async file =>
-      {
-        if(file.Name != baseFileName)
+      var tasks = dirInfo.EnumerateFiles(filter, SearchOption.AllDirectories)
+                  .Select(file => DoDiffAsync(file, baseData, dirPath, baseFileName, filter));
+      return await Task.WhenAll(tasks);
+    }
+
+    private async Task<string> DoDiffAsync(FileInfo file, byte[] baseData, string dirPath, string baseFileName, string filter)
+    {
+      var res = string.Empty;
+      if(file.Name != baseFileName)
         {
-          var newData = await File.ReadAllBytesAsync(file.FullName);
+          var newData =  await File.ReadAllBytesAsync(file.FullName);
           var diffFile = new FileInfo(Path.GetTempFileName());
           using(var fs = diffFile.OpenWrite())
           {
-            var da = Stopwatch.StartNew();
-            BSAlgorithm.Diff(baseData, newData, fs);
-            da.Stop();
-            _logger.LogInformation($"{file.FullName} diff algorithm ellapsed: {da.ElapsedMilliseconds}");
+            await BSAlgorithm.DiffAsync(baseData, newData, fs);
           }
           if(diffFile.Length < file.Length)
           {
-            lock(this)
-            {
-              res.Add(Path.GetRelativePath(dirPath, file.FullName));
-            }
             diffFile.Replace(file.FullName, null);
+            res = Path.GetRelativePath(dirPath, file.FullName);
           }
         }
-      });
-      await Task.WhenAll(tasks);
-      return res;
+        return res;
     }
 
-    private async Task WritePatches(IList<string> patches, string dirPath, string patchInfo)
+    private async Task WritePatcheAsync(IEnumerable<string> patches, string dirPath, string patchInfo)
     {
-      var isFirst = true;
       using(var sm = new StreamWriter(Path.Combine(dirPath, patchInfo)))
       {
         foreach (var patch in patches)
         {
-          if(isFirst)
+          if(patch != patches.First())
           {
-            isFirst = false;
-            await sm.WriteAsync(patch);
+            await sm.WriteAsync("|");
           }
-          else
-          {
-            await sm.WriteAsync($"|{patch}");
-          }
+          await sm.WriteAsync(patch);
         }
       }
     }
 
-    public Task<string> PatchAsync(Stream zip, string zipFileName, string baseFileName="weex.js", string filter = "js")
+    public async Task<string> PatchAsync(Stream zip, string zipFileName, string baseFileName="weex.js", string patchInfo = "patch_info.txt")
     {
-      var dirPath = ZipHelper.UnZip(zip);
+      var dirPath = await ZipHelper.UnZipAsync(zip);
+      await PatchCoreAsync(dirPath, baseFileName, patchInfo);
+      return await ZipHelper.ZipAsync(dirPath, zipFileName);
+    }
 
-      var zipFile = ZipHelper.Zip(dirPath, zipFileName);
-      return Task.FromResult(zipFile);
+    private async Task PatchCoreAsync(string dirPath, string baseFileName, string patchInfo = "patch_info.txt")
+    {
+      var patches = await ParsePatchAsync(dirPath, patchInfo);
+      var tasks = patches.Select(async x=>  await DoPatchAsync(dirPath, baseFileName, x));
+      await Task.WhenAll(tasks);
+    }
+
+    private async Task<string[]> ParsePatchAsync(string dirPath, string patchInfo)
+    {
+      var text = await File.ReadAllTextAsync(Path.Combine(dirPath, patchInfo));
+      return text.Split("|");
+    }
+
+    private async Task DoPatchAsync(string dirPath, string baseFileName, string patchFile)
+    {
+      using(var bs = File.OpenRead(Path.Combine(dirPath, baseFileName)))
+      {
+        var pi  = new FileInfo(Path.Combine(dirPath, patchFile));
+        var oi = new FileInfo(Path.GetTempFileName());
+        using(var os = oi.OpenWrite())
+        {
+          await BSAlgorithm.PatchAsync(bs, ()=> pi.OpenRead(), os);
+        }
+        oi.Replace(pi.FullName, null);
+      }
     }
   }
 }

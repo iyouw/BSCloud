@@ -33,11 +33,11 @@ namespace BSCloud.Controllers
     }
 
     [HttpPost]
-    public async Task<FileStreamResult> Patch(IFormFile zipFile, string baseFileName="weex.js", string filter="*.js")
+    public async Task<FileStreamResult> Patch(IFormFile zipFile, string baseFileName="weex.js", string patchInfo="patch_info.txt")
     {
       using(var zip = zipFile.OpenReadStream())
       {
-        var patch = await _service.PatchAsync(zip, Path.GetFileNameWithoutExtension(zipFile.FileName),baseFileName, filter);
+        var patch = await _service.PatchAsync(zip, Path.GetFileNameWithoutExtension(zipFile.FileName),baseFileName, patchInfo);
         return new DeleteFileStreamResult(System.IO.File.OpenRead(patch), "application/octet-stream")
         {
           FileDownloadName = Path.GetFileName(patch)

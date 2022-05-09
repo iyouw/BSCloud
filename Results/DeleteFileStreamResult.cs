@@ -1,4 +1,5 @@
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Net.Http.Headers;
@@ -23,7 +24,7 @@ namespace BSCloud.Results
     {
       await base.ExecuteResultAsync(context);
       var file = (this.FileStream as FileStream)?.Name;
-      File.Delete(file);
+      ThreadPool.QueueUserWorkItem( _ =>File.Delete(file));
     }
   }
 }

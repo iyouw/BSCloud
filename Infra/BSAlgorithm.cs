@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading.Tasks;
 using ICSharpCode.SharpZipLib.BZip2;
 
 namespace BSCloud.Infra
@@ -34,6 +35,11 @@ namespace BSCloud.Infra
 	*/
 	class BSAlgorithm
 	{
+
+		public static Task DiffAsync(byte[] oldData, byte[] newData, Stream output)
+		{
+			return Task.Run(()=>Diff(oldData, newData, output));
+		}
 		/// <summary>
 		/// Creates a binary patch (in <a href="http://www.daemonology.net/bsdiff/">bsdiff</a> format) that can be used
 		/// (by <see cref="Apply"/>) to transform <paramref name="oldData"/> into <paramref name="newData"/>.
@@ -221,6 +227,11 @@ namespace BSCloud.Infra
 			output.Position = endPosition;
 		}
 
+
+		public static Task PatchAsync(Stream input, Func<Stream> openPatchStream, Stream output)
+		{
+			return Task.Run(()=>Patch(input, openPatchStream, output));
+		}
 		/// <summary>
 		/// Applies a binary patch (in <a href="http://www.daemonology.net/bsdiff/">bsdiff</a> format) to the data in
 		/// <paramref name="input"/> and writes the results of patching to <paramref name="output"/>.
