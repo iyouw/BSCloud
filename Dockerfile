@@ -8,7 +8,7 @@ RUN dotnet publish -c release -o /app --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:6.0
 WORKDIR /app
-EXPOSE 80
+EXPOSE 8096
 COPY --from=build /app .
 
 ENTRYPOINT ["dotnet","BSCloud.dll"]

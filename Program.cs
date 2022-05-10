@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Hosting;
@@ -20,7 +21,14 @@ namespace BSCloud
             Host.CreateDefaultBuilder(args)
                 .ConfigureWebHostDefaults(webBuilder =>
                 {
+                    var config = new ConfigurationBuilder()
+                                .SetBasePath(Directory.GetCurrentDirectory())
+                                .AddJsonFile("hostsettings.json",optional:true)
+                                .AddCommandLine(args)
+                                .AddEnvironmentVariables()
+                                .Build();
                     webBuilder.UseStartup<Startup>()
+                        .UseConfiguration(config)
                         .UseKestrel(options=>options.Limits.MaxRequestBodySize = null);
                 });
     }

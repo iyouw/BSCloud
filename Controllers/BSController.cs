@@ -9,7 +9,7 @@ using BSCloud.Results;
 namespace BSCloud.Controllers
 {
   [ApiController]
-  [Route("api/[controller]/[action]")]
+  [Route("[controller]/[action]")]
   public class BSController: ControllerBase
   {
     private readonly IBSService _service;
