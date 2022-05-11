@@ -14,9 +14,10 @@ namespace BSCloud.Services
     {
       var dirPath = await ZipHelper.UnZipAsync(zip);
 
-      var patches = await DiffCoreAsync(dirPath, baseFileName, filter);
+      var pathes = await DiffCoreAsync(dirPath, baseFileName, filter);
+      var patches = pathes.Where(x=>!string.IsNullOrEmpty(x)).Prepend(baseFileName);
 
-      await WritePatcheAsync(patches.Where(x=>!string.IsNullOrEmpty(x)), baseFileName, dirPath, patchInfo);
+      await WritePatcheAsync(patches, dirPath, patchInfo);
 
       return await ZipHelper.ZipAsync(dirPath, zipFileName);
     }
@@ -50,12 +51,10 @@ namespace BSCloud.Services
         return res;
     }
 
-    private async Task WritePatcheAsync(IEnumerable<string> patches, string baseFileName, string dirPath, string patchInfo)
+    private async Task WritePatcheAsync(IEnumerable<string> patches, string dirPath, string patchInfo)
     {
       using(var sm = new StreamWriter(Path.Combine(dirPath, patchInfo)))
       {
-        await sm.WriteAsync(baseFileName);
-        await sm.WriteAsync("|");
         foreach (var patch in patches)
         {
           if(patch != patches.First())
@@ -77,7 +76,7 @@ namespace BSCloud.Services
     private async Task PatchCoreAsync(string dirPath, string baseFileName, string patchInfo = "patch_info.txt")
     {
       var patches = await ParsePatchAsync(dirPath, patchInfo);
-      var tasks = patches.Select(async x=>  await DoPatchAsync(dirPath, baseFileName, x));
+      var tasks = patches.Skip(1).Select(async x=>  await DoPatchAsync(dirPath, baseFileName, x));
       await Task.WhenAll(tasks);
     }
 
