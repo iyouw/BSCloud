@@ -13,28 +13,30 @@ namespace BSCloud.Services
     public async Task<string> DiffAsync(Stream zip, string zipFileName, string baseFileName="weex.js", string filter="js", string patchInfo = "patch_info.txt")
     {
       var dirPath = await ZipHelper.UnZipAsync(zip);
+      var rootPath = FindRootPath(dirPath, baseFileName);
 
-      var pathes = await DiffCoreAsync(dirPath, baseFileName, filter);
+      var pathes = await DiffCoreAsync(rootPath, baseFileName, filter);
       var patches = pathes.Where(x=>!string.IsNullOrEmpty(x)).Prepend(baseFileName);
 
-      await WritePatcheAsync(patches, dirPath, patchInfo);
+      await WritePatcheAsync(patches, rootPath, patchInfo);
 
       return await ZipHelper.ZipAsync(dirPath, zipFileName);
     }
 
     private async Task<string[]> DiffCoreAsync(string dirPath,string baseFileName, string filter)
     {
-      var baseData = await File.ReadAllBytesAsync(Path.Combine(dirPath, baseFileName));
+      var basePath = Path.Combine(dirPath, baseFileName);
+      var baseData = await File.ReadAllBytesAsync(basePath);
       var dirInfo = new DirectoryInfo(dirPath);
       var tasks = dirInfo.EnumerateFiles(filter, SearchOption.AllDirectories)
-                  .Select(file => DoDiffAsync(file, baseData, dirPath, baseFileName, filter));
+                  .Select(file => DoDiffAsync(file, baseData, dirPath, basePath, filter));
       return await Task.WhenAll(tasks);
     }
 
-    private async Task<string> DoDiffAsync(FileInfo file, byte[] baseData, string dirPath, string baseFileName, string filter)
+    private async Task<string> DoDiffAsync(FileInfo file, byte[] baseData, string dirPath, string basePath, string filter)
     {
       var res = string.Empty;
-      if(file.Name != baseFileName)
+      if(file.FullName != basePath)
         {
           var newData =  await File.ReadAllBytesAsync(file.FullName);
           var diffFile = new FileInfo(Path.GetTempFileName());
@@ -69,7 +71,8 @@ namespace BSCloud.Services
     public async Task<string> PatchAsync(Stream zip, string zipFileName, string baseFileName="weex.js", string patchInfo = "patch_info.txt")
     {
       var dirPath = await ZipHelper.UnZipAsync(zip);
-      await PatchCoreAsync(dirPath, baseFileName, patchInfo);
+      var rootPath = FindRootPath(dirPath, baseFileName);
+      await PatchCoreAsync(rootPath, baseFileName, patchInfo);
       return await ZipHelper.ZipAsync(dirPath, zipFileName);
     }
 
@@ -98,6 +101,20 @@ namespace BSCloud.Services
         }
         oi.Replace(pi.FullName, null);
       }
+    }
+
+    private string FindRootPath(string dirPath, string baseFileName){
+      if(File.Exists(Path.Combine(dirPath, baseFileName))){
+        return dirPath;
+      }
+      foreach (var subPath in Directory.EnumerateDirectories(dirPath))
+      {
+        if(File.Exists(Path.Combine(subPath, baseFileName)))
+        {
+          return subPath;
+        }
+      }
+      throw new FileNotFoundException(baseFileName);
     }
   }
 }
